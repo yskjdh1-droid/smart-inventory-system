@@ -210,7 +210,13 @@ router.patch("/:loanId/extension-requests/:requestId", requireAuth, requireRole(
 		await request.save();
 
 		if (status === "APPROVED") {
-			await Loan.findByIdAndUpdate(request.loanId, { dueDate: request.requestedDueDate });
+			const loan = await Loan.findById(request.loanId);
+			if (loan) {
+				loan.dueDate = request.requestedDueDate;
+				loan.dueReminder24hSentAt = null;
+				loan.dueReminderMorningSentAt = null;
+				await loan.save();
+			}
 		}
 		return ok(res, { requestId: request._id, status: request.status }, "Extension request processed");
 	} catch (err) {
