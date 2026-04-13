@@ -1547,7 +1547,7 @@ Authorization: Bearer <accessToken>
 - **자동 배포**: GitHub Actions + Railway Deploy Hook
 - **모바일 앱**: React Native (배포는 별도 스토어 파이프라인)
 
-이 구성은 초보자 기준 설정이 단순하고, 무료/저비용으로 시작하기 쉽습니다.
+
 
 ### 8.1 환경 변수 (.env)
 
