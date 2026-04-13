@@ -57,7 +57,7 @@ router.get("/my", requireAuth, async (req, res, next) => {
   }
 });
 
-router.get("/all", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.get("/all", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
   try {
     const files = await UploadFile.find({})
       .populate("uploaderId", "name email role")

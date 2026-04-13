@@ -24,6 +24,14 @@
 - File Storage: Local uploads (환경별 S3/Cloudinary 확장 가능)
 - API Docs: Swagger/OpenAPI 또는 Postman Collection
 
+### 1.5 최신 구현 반영
+- 관리자만 기자재를 등록/수정/삭제할 수 있다.
+- 기자재 등록/수정 시 사진 파일을 함께 업로드할 수 있다.
+- 기자재 등록 시 QR 코드와 QR 이미지 URL이 즉시 생성되어 DB에 저장된다.
+- 기자재 목록은 카테고리, 상태, 검색어, 정렬 기준으로 필터링 가능하다.
+- 연체 반납 시 벌금 저장 대신 `borrowBlockedUntil` 기준의 대여 금지 정책을 적용한다.
+- 분실 신고는 기자재와 대여 상태를 `LOST`로, 파손 신고는 기자재 상태를 `REPAIR`로 자동 반영한다.
+
 ### 1.4 기본 정보
 - Base URL (Dev): http://localhost:3000/api
 - Base URL (Prod): https://api.inventory-system.com/api
@@ -156,6 +164,7 @@ Request -> CORS -> JSON Parser -> Logger -> Auth Check -> Role Check -> Handler 
 - POST /auth/logout
 - GET /equipment
 - GET /equipment/:id
+- GET /equipment?category=&status=&search=&sortBy=&sortOrder=&page=&limit=
 - POST /rental-requests
 - GET /rental-requests
 - POST /loans/scan
@@ -175,9 +184,9 @@ Request -> CORS -> JSON Parser -> Logger -> Auth Check -> Role Check -> Handler 
 - POST /files/upload
 - GET /files/my
 
-### 4.2 관리자 API (ADMIN/MANAGER)
-- POST /equipment
-- PATCH /equipment/:id
+### 4.2 관리자 API (ADMIN)
+- POST /equipment (multipart/form-data, field: `photo` optional)
+- PATCH /equipment/:id (multipart/form-data, field: `photo` optional)
 - DELETE /equipment/:id
 - POST /equipment/:id/generate-qr
 - GET /categories
@@ -569,7 +578,7 @@ const userSchema = new Schema({
   phone: { type: String, required: true },
   passwordHash: { type: String, required: true },
   emailVerified: { type: Boolean, default: false },
-  role: { type: String, enum: ['STUDENT', 'MANAGER', 'ADMIN'], default: 'STUDENT' },
+  role: { type: String, enum: ['STUDENT', 'ADMIN'], default: 'STUDENT' },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
@@ -599,6 +608,9 @@ const emailVerificationSchema = new Schema({
 Equipment 상세 필드:
 - `qrCode`: 스캔 판별용 영구 식별값
 - `qrUrl`: QR 이미지 URL (DB 저장)
+- `photoUrl`: 기자재 사진 URL
+- `photoStoredName`: 저장된 사진 파일명
+- `categoryName`: 목록 필터/정렬용 카테고리 표시명
 
 User 상세 필드:
 - `borrowBlockedUntil`: 연체 일수만큼 대여 금지되는 종료 시각
@@ -606,6 +618,8 @@ User 상세 필드:
 ### 7.4 ExtensionRequest / IncidentReport
 - ExtensionRequest: `loanId`, `requestedDueDate`, `reason`, `status`, `reviewNote`, `reviewedBy`
 - IncidentReport: `loanId`, `reportType(LOSS|DAMAGE)`, `description`, `severity`, `status`, `adminNote`
+- LOSS 신고 시: 기자재 상태 `LOST`, 대여 상태 `LOST`
+- DAMAGE 신고 시: 기자재 상태 `REPAIR`
 
 ### 7.5 Category / Penalty / AdminNotificationSetting
 - Category: `name`, `description`, `isActive`, `displayOrder`
@@ -623,6 +637,10 @@ User 상세 필드:
 ### 8.2 채널
 - 1순위: FCM 푸시
 - 대체: 이메일
+
+### 8.2.1 연체 대여 금지
+- 연체 반납 시 `borrowBlockedUntil` 값을 설정한다.
+- `borrowBlockedUntil`이 미래인 사용자는 `/loans/scan`과 `/loans/:loanId/return` 흐름에서 대여/반납 정책에 따라 차단된다.
 
 ### 8.3 중복 방지
 - 동일 loanId 기준 하루 1회만 발송
@@ -666,6 +684,10 @@ User 상세 필드:
 - 업로드: POST /files/upload (multipart/form-data, field: `file`)
 - 내 파일 조회: GET /files/my
 - 전체 파일 조회(관리자): GET /files/all
+
+기자재 등록용 사진 업로드:
+- POST /equipment (multipart/form-data, field: `photo`)
+- PATCH /equipment/:id (multipart/form-data, field: `photo`)
 
 업로드 응답 예시:
 ```json

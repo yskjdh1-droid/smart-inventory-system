@@ -20,6 +20,7 @@ const loanSchema = new mongoose.Schema(
 
 loanSchema.index({ userId: 1, status: 1 });
 loanSchema.index({ equipmentId: 1, status: 1 });
+loanSchema.index({ equipmentId: 1 }, { unique: true, partialFilterExpression: { status: "ACTIVE" } });
 loanSchema.index({ dueDate: 1, status: 1 });
 
 module.exports = mongoose.model("Loan", loanSchema);

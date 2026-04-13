@@ -7,7 +7,7 @@ const router = express.Router();
 
 const repairRecords = [];
 
-router.post("/", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.post("/", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const { equipmentId, issue, cost = 0, notes = "" } = req.body;
 		if (!equipmentId || !issue) {
@@ -34,7 +34,7 @@ router.post("/", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res
 	}
 });
 
-router.patch("/:id/complete", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.patch("/:id/complete", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const target = repairRecords.find((r) => r.id === req.params.id);
 		if (!target) {
@@ -52,7 +52,7 @@ router.patch("/:id/complete", requireAuth, requireRole(["ADMIN", "MANAGER"]), as
 	}
 });
 
-router.get("/equipment/:equipmentId", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res) => {
+router.get("/equipment/:equipmentId", requireAuth, requireRole(["ADMIN"]), async (req, res) => {
 	const records = repairRecords.filter((r) => r.equipmentId === req.params.equipmentId);
 	return ok(res, { records });
 });

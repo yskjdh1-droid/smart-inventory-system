@@ -10,7 +10,7 @@ const userSchema = new mongoose.Schema(
     borrowBlockedUntil: { type: Date, default: null },
     role: {
       type: String,
-      enum: ["STUDENT", "MANAGER", "ADMIN"],
+      enum: ["STUDENT", "ADMIN"],
       default: "STUDENT"
     }
   },

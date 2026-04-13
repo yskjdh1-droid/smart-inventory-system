@@ -7,6 +7,8 @@ const equipmentSchema = new mongoose.Schema(
     categoryName: { type: String, default: "" },
     model: { type: String, default: "" },
     serialNumber: { type: String, required: true, unique: true },
+    photoUrl: { type: String, default: "" },
+    photoStoredName: { type: String, default: "" },
     qrCode: { type: String, required: true, unique: true },
     qrUrl: { type: String, default: "" },
     description: { type: String, default: "" },

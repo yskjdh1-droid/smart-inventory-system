@@ -15,7 +15,7 @@ router.get("/", requireAuth, async (req, res, next) => {
 	}
 });
 
-router.post("/", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.post("/", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const { name, description = "", displayOrder = 0 } = req.body;
 		if (!name) {
@@ -36,7 +36,7 @@ router.post("/", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res
 	}
 });
 
-router.patch("/:categoryId", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.patch("/:categoryId", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const category = await Category.findByIdAndUpdate(req.params.categoryId, req.body, { new: true });
 		if (!category) {
@@ -51,7 +51,7 @@ router.patch("/:categoryId", requireAuth, requireRole(["ADMIN", "MANAGER"]), asy
 	}
 });
 
-router.delete("/:categoryId", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.delete("/:categoryId", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const inUse = await Equipment.exists({ categoryId: req.params.categoryId, deletedAt: null });
 		if (inUse) {

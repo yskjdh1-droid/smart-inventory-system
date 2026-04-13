@@ -7,7 +7,7 @@ const { requireAuth, requireRole } = require("../middlewares/auth");
 
 const router = express.Router();
 
-router.get("/notification-settings", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.get("/notification-settings", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		let setting = await NotificationSetting.findOne({ scope: "ADMIN", userId: null });
 		if (!setting) {
@@ -23,7 +23,7 @@ router.get("/notification-settings", requireAuth, requireRole(["ADMIN", "MANAGER
 	}
 });
 
-router.patch("/notification-settings", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.patch("/notification-settings", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const setting = await NotificationSetting.findOneAndUpdate(
 			{ scope: "ADMIN", userId: null },
@@ -48,7 +48,7 @@ router.patch("/notification-settings", requireAuth, requireRole(["ADMIN", "MANAG
 	}
 });
 
-router.patch("/penalties/:penaltyId", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.patch("/penalties/:penaltyId", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const penalty = await Penalty.findById(req.params.penaltyId);
 		if (!penalty) {
@@ -66,7 +66,7 @@ router.patch("/penalties/:penaltyId", requireAuth, requireRole(["ADMIN", "MANAGE
 	}
 });
 
-router.post("/notifications/broadcast", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.post("/notifications/broadcast", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const { title = "관리자 공지", body = "알림 테스트", userIds = [] } = req.body;
 		if (!Array.isArray(userIds) || userIds.length === 0) {

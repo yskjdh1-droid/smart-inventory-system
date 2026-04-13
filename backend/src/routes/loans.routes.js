@@ -1,4 +1,5 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const Loan = require("../models/Loan");
 const Equipment = require("../models/Equipment");
 const ExtensionRequest = require("../models/ExtensionRequest");
@@ -9,6 +10,19 @@ const { ok } = require("../utils/response");
 const { requireAuth, requireRole } = require("../middlewares/auth");
 
 const router = express.Router();
+
+async function applyIncidentEquipmentStatus({ loan, equipment, reportType, session }) {
+	if (reportType === "LOSS") {
+		loan.status = "LOST";
+		equipment.status = "LOST";
+		await loan.save({ session });
+		await equipment.save({ session });
+		return;
+	}
+
+	equipment.status = "REPAIR";
+	await equipment.save({ session });
+}
 
 router.post("/scan", requireAuth, async (req, res, next) => {
 	try {
@@ -36,7 +50,7 @@ router.post("/:loanId/return", requireAuth, async (req, res, next) => {
 			e.code = "LOAN_NOT_FOUND";
 			throw e;
 		}
-		if (loan.userId.toString() !== req.user.id && !["ADMIN", "MANAGER"].includes(req.user.role)) {
+		if (loan.userId.toString() !== req.user.id && req.user.role !== "ADMIN") {
 			const e = new Error("Forbidden");
 			e.status = 403;
 			e.code = "FORBIDDEN";
@@ -55,8 +69,10 @@ router.post("/:loanId/return", requireAuth, async (req, res, next) => {
 			loan.notes = req.body.notes;
 		}
 		await loan.save();
-		const penalty = await LoanScanService.applyLateReturnPenalty({ userId: loan.userId, loan });
-		await Equipment.findByIdAndUpdate(loan.equipmentId, { status: "AVAILABLE" });
+		const borrowBlock = await LoanScanService.applyLateReturnBorrowBlock({ userId: loan.userId, loan });
+		const equipment = await Equipment.findById(loan.equipmentId);
+		const nextEquipmentStatus = equipment && ["REPAIR", "LOST"].includes(equipment.status) ? equipment.status : "AVAILABLE";
+		await Equipment.findByIdAndUpdate(loan.equipmentId, { status: nextEquipmentStatus });
 
 		return ok(
 			res,
@@ -64,8 +80,8 @@ router.post("/:loanId/return", requireAuth, async (req, res, next) => {
 				loanId: loan._id,
 				status: loan.status,
 				returnedAt: loan.returnedAt,
-				penalty: penalty
-					? { type: "LATE_RETURN_BLOCK", blockedUntil: penalty.blockedUntil, overdueDays: penalty.overdueDays }
+				borrowBlock: borrowBlock
+					? { blockedUntil: borrowBlock.blockedUntil, overdueDays: borrowBlock.overdueDays }
 					: null
 			},
 			"Returned"
@@ -75,7 +91,7 @@ router.post("/:loanId/return", requireAuth, async (req, res, next) => {
 	}
 });
 
-router.post("/:loanId/force-return", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.post("/:loanId/force-return", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const loan = await Loan.findById(req.params.loanId);
 		if (!loan) {
@@ -95,8 +111,10 @@ router.post("/:loanId/force-return", requireAuth, requireRole(["ADMIN", "MANAGER
 		loan.returnedAt = new Date();
 		loan.forceReturned = true;
 		await loan.save();
-		const penalty = await LoanScanService.applyLateReturnPenalty({ userId: loan.userId, loan });
-		await Equipment.findByIdAndUpdate(loan.equipmentId, { status: "AVAILABLE" });
+		const borrowBlock = await LoanScanService.applyLateReturnBorrowBlock({ userId: loan.userId, loan });
+		const equipment = await Equipment.findById(loan.equipmentId);
+		const nextEquipmentStatus = equipment && ["REPAIR", "LOST"].includes(equipment.status) ? equipment.status : "AVAILABLE";
+		await Equipment.findByIdAndUpdate(loan.equipmentId, { status: nextEquipmentStatus });
 
 		return ok(
 			res,
@@ -104,8 +122,8 @@ router.post("/:loanId/force-return", requireAuth, requireRole(["ADMIN", "MANAGER
 				loanId: loan._id,
 				status: loan.status,
 				returnedAt: loan.returnedAt,
-				penalty: penalty
-					? { type: "LATE_RETURN_BLOCK", blockedUntil: penalty.blockedUntil, overdueDays: penalty.overdueDays }
+				borrowBlock: borrowBlock
+					? { blockedUntil: borrowBlock.blockedUntil, overdueDays: borrowBlock.overdueDays }
 					: null
 			},
 			"Force return processed"
@@ -167,7 +185,7 @@ router.post("/:loanId/extension-requests", requireAuth, async (req, res, next) =
 	}
 });
 
-router.get("/:loanId/extension-requests", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.get("/:loanId/extension-requests", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const requests = await ExtensionRequest.find({ loanId: req.params.loanId }).sort({ createdAt: -1 });
 		return ok(res, { requests });
@@ -176,7 +194,7 @@ router.get("/:loanId/extension-requests", requireAuth, requireRole(["ADMIN", "MA
 	}
 });
 
-router.patch("/:loanId/extension-requests/:requestId", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.patch("/:loanId/extension-requests/:requestId", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const { status, reviewNote = "" } = req.body;
 		const request = await ExtensionRequest.findById(req.params.requestId);
@@ -209,14 +227,45 @@ router.post("/:loanId/report-loss", requireAuth, async (req, res, next) => {
 			e.code = "VALIDATION_ERROR";
 			throw e;
 		}
-		const report = await IncidentReport.create({
-			loanId: req.params.loanId,
-			reportedBy: req.user.id,
-			reportType: "LOSS",
-			description,
-			severity: "HIGH"
-		});
-		return ok(res, { reportId: report._id, reportType: report.reportType, status: report.status }, "Report submitted", 201);
+		const session = await mongoose.startSession();
+		try {
+			let payload;
+			await session.withTransaction(async () => {
+				const loan = await Loan.findById(req.params.loanId).session(session);
+				if (!loan) {
+					const e = new Error("Loan not found");
+					e.status = 404;
+					e.code = "LOAN_NOT_FOUND";
+					throw e;
+				}
+				if (loan.userId.toString() !== req.user.id && req.user.role !== "ADMIN") {
+					const e = new Error("Forbidden");
+					e.status = 403;
+					e.code = "FORBIDDEN";
+					throw e;
+				}
+				const equipment = await Equipment.findById(loan.equipmentId).session(session);
+				if (!equipment) {
+					const e = new Error("Equipment not found");
+					e.status = 404;
+					e.code = "EQUIPMENT_NOT_FOUND";
+					throw e;
+				}
+				const report = new IncidentReport({
+					loanId: loan._id,
+					reportedBy: req.user.id,
+					reportType: "LOSS",
+					description,
+					severity: "HIGH"
+				});
+				await report.save({ session });
+				await applyIncidentEquipmentStatus({ loan, equipment, reportType: "LOSS", session });
+				payload = { reportId: report._id, reportType: report.reportType, status: report.status, equipmentStatus: equipment.status, loanStatus: loan.status };
+			});
+			return ok(res, payload, "Report submitted", 201);
+		} finally {
+			session.endSession();
+		}
 	} catch (err) {
 		return next(err);
 	}
@@ -231,20 +280,51 @@ router.post("/:loanId/report-damage", requireAuth, async (req, res, next) => {
 			e.code = "VALIDATION_ERROR";
 			throw e;
 		}
-		const report = await IncidentReport.create({
-			loanId: req.params.loanId,
-			reportedBy: req.user.id,
-			reportType: "DAMAGE",
-			description,
-			severity
-		});
-		return ok(res, { reportId: report._id, reportType: report.reportType, status: report.status }, "Report submitted", 201);
+		const session = await mongoose.startSession();
+		try {
+			let payload;
+			await session.withTransaction(async () => {
+				const loan = await Loan.findById(req.params.loanId).session(session);
+				if (!loan) {
+					const e = new Error("Loan not found");
+					e.status = 404;
+					e.code = "LOAN_NOT_FOUND";
+					throw e;
+				}
+				if (loan.userId.toString() !== req.user.id && req.user.role !== "ADMIN") {
+					const e = new Error("Forbidden");
+					e.status = 403;
+					e.code = "FORBIDDEN";
+					throw e;
+				}
+				const equipment = await Equipment.findById(loan.equipmentId).session(session);
+				if (!equipment) {
+					const e = new Error("Equipment not found");
+					e.status = 404;
+					e.code = "EQUIPMENT_NOT_FOUND";
+					throw e;
+				}
+				const report = new IncidentReport({
+					loanId: loan._id,
+					reportedBy: req.user.id,
+					reportType: "DAMAGE",
+					description,
+					severity
+				});
+				await report.save({ session });
+				await applyIncidentEquipmentStatus({ loan, equipment, reportType: "DAMAGE", session });
+				payload = { reportId: report._id, reportType: report.reportType, status: report.status, equipmentStatus: equipment.status, loanStatus: loan.status };
+			});
+			return ok(res, payload, "Report submitted", 201);
+		} finally {
+			session.endSession();
+		}
 	} catch (err) {
 		return next(err);
 	}
 });
 
-router.patch("/:loanId/report-loss/:reportId", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.patch("/:loanId/report-loss/:reportId", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const report = await IncidentReport.findById(req.params.reportId);
 		if (!report) {
@@ -263,7 +343,7 @@ router.patch("/:loanId/report-loss/:reportId", requireAuth, requireRole(["ADMIN"
 	}
 });
 
-router.patch("/:loanId/report-damage/:reportId", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.patch("/:loanId/report-damage/:reportId", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const report = await IncidentReport.findById(req.params.reportId);
 		if (!report) {
@@ -301,7 +381,7 @@ router.get("/my-loans", requireAuth, async (req, res, next) => {
 	}
 });
 
-router.get("/overdue", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.get("/overdue", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const now = new Date();
 		const overdueLoans = await Loan.find({ status: "ACTIVE", dueDate: { $lt: now } }).sort({ dueDate: 1 });
@@ -311,7 +391,7 @@ router.get("/overdue", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (re
 	}
 });
 
-router.get("/penalties", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.get("/penalties", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const penalties = await Penalty.find({}).sort({ createdAt: -1 });
 		return ok(res, { penalties });
@@ -320,7 +400,7 @@ router.get("/penalties", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (
 	}
 });
 
-router.get("/", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.get("/", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const { status, userId, equipmentId, page = 1, limit = 10 } = req.query;
 		const filter = {};

@@ -6,7 +6,7 @@ const { requireAuth, requireRole } = require("../middlewares/auth");
 
 const router = express.Router();
 
-router.get("/equipment-stats", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.get("/equipment-stats", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const [totalEquipment, available, borrowed, inRepair, lost] = await Promise.all([
 			Equipment.countDocuments({ deletedAt: null }),
@@ -22,7 +22,7 @@ router.get("/equipment-stats", requireAuth, requireRole(["ADMIN", "MANAGER"]), a
 	}
 });
 
-router.get("/rental-stats", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.get("/rental-stats", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const [totalRentals, activeRentals, completedRentals, overdueRentals] = await Promise.all([
 			Loan.countDocuments({}),
@@ -36,7 +36,7 @@ router.get("/rental-stats", requireAuth, requireRole(["ADMIN", "MANAGER"]), asyn
 	}
 });
 
-router.get("/monthly-trends", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.get("/monthly-trends", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const months = Number(req.query.months || 6);
 		const now = new Date();

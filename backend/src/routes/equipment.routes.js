@@ -2,6 +2,7 @@ const express = require("express");
 const Equipment = require("../models/Equipment");
 const Category = require("../models/Category");
 const { QRCodeService } = require("../services/qr-code.service");
+const { upload, buildPublicUrl } = require("../services/file-storage.service");
 const { ok } = require("../utils/response");
 const { requireAuth, requireRole } = require("../middlewares/auth");
 
@@ -9,7 +10,7 @@ const router = express.Router();
 
 router.get("/", requireAuth, async (req, res, next) => {
 	try {
-		const { category, status, search, page = 1, limit = 10 } = req.query;
+		const { category, status, search, sortBy = "createdAt", sortOrder = "desc", page = 1, limit = 10 } = req.query;
 		const filter = { deletedAt: null };
 		if (category) {
 			filter.categoryName = category;
@@ -21,10 +22,18 @@ router.get("/", requireAuth, async (req, res, next) => {
 			filter.name = { $regex: search, $options: "i" };
 		}
 
+		const allowedSortFields = new Set(["createdAt", "categoryName", "status", "name", "serialNumber"]);
+		const selectedSortField = allowedSortFields.has(sortBy) ? sortBy : "createdAt";
+		const selectedSortOrder = String(sortOrder).toLowerCase() === "asc" ? 1 : -1;
+		const sort = { [selectedSortField]: selectedSortOrder };
+		if (selectedSortField !== "createdAt") {
+			sort.createdAt = -1;
+		}
+
 		const p = Number(page);
 		const l = Number(limit);
 		const [items, total] = await Promise.all([
-			Equipment.find(filter).sort({ createdAt: -1 }).skip((p - 1) * l).limit(l),
+			Equipment.find(filter).sort(sort).skip((p - 1) * l).limit(l),
 			Equipment.countDocuments(filter)
 		]);
 
@@ -52,7 +61,7 @@ router.get("/:id", requireAuth, async (req, res, next) => {
 	}
 });
 
-router.post("/", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+	router.post("/", requireAuth, requireRole(["ADMIN"]), upload.single("photo"), async (req, res, next) => {
 	try {
 		const { name, categoryId, model = "", serialNumber, description = "", location = "", quantity = 1 } = req.body;
 		if (!name || !serialNumber) {
@@ -76,6 +85,8 @@ router.post("/", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res
 			categoryName,
 			model,
 			serialNumber,
+			photoUrl: req.file ? buildPublicUrl(req.file.filename) : "",
+			photoStoredName: req.file ? req.file.filename : "",
 			description,
 			location,
 			quantity,
@@ -99,12 +110,16 @@ router.post("/", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res
 	}
 });
 
-router.patch("/:id", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+	router.patch("/:id", requireAuth, requireRole(["ADMIN"]), upload.single("photo"), async (req, res, next) => {
 	try {
 		const payload = { ...req.body };
 		if (payload.categoryId) {
 			const category = await Category.findById(payload.categoryId);
 			payload.categoryName = category ? category.name : "";
+		}
+		if (req.file) {
+			payload.photoUrl = buildPublicUrl(req.file.filename);
+			payload.photoStoredName = req.file.filename;
 		}
 		const equipment = await Equipment.findByIdAndUpdate(req.params.id, payload, { new: true });
 		if (!equipment) {
@@ -119,7 +134,7 @@ router.patch("/:id", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req,
 	}
 });
 
-router.delete("/:id", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.delete("/:id", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const equipment = await Equipment.findByIdAndUpdate(req.params.id, { deletedAt: new Date() }, { new: true });
 		if (!equipment) {
@@ -134,7 +149,7 @@ router.delete("/:id", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req
 	}
 });
 
-router.post("/:id/generate-qr", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.post("/:id/generate-qr", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const equipment = await Equipment.findById(req.params.id);
 		if (!equipment) {

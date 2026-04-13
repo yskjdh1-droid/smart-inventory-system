@@ -9,7 +9,7 @@ const { requireAuth, requireRole } = require("../middlewares/auth");
 
 const router = express.Router();
 
-router.get("/", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.get("/", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const users = await User.find({}).select("email name phone role createdAt").sort({ createdAt: -1 });
 		return ok(res, { users });
@@ -167,7 +167,7 @@ router.patch("/password", requireAuth, async (req, res, next) => {
 	}
 });
 
-router.get("/:id", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.get("/:id", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const user = await User.findById(req.params.id).select("email name phone role createdAt");
 		if (!user) {
@@ -185,6 +185,12 @@ router.get("/:id", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, r
 router.patch("/:id/role", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const { role } = req.body;
+		if (!["STUDENT", "ADMIN"].includes(role)) {
+			const e = new Error("Invalid role");
+			e.status = 422;
+			e.code = "VALIDATION_ERROR";
+			throw e;
+		}
 		const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true }).select("email name role");
 		if (!user) {
 			const e = new Error("User not found");

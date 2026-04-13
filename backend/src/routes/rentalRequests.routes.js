@@ -30,7 +30,7 @@ router.post("/", requireAuth, async (req, res, next) => {
 router.get("/", requireAuth, async (req, res, next) => {
 	try {
 		const filter = {};
-		if (!["ADMIN", "MANAGER"].includes(req.user.role)) {
+		if (req.user.role !== "ADMIN") {
 			filter.userId = req.user.id;
 		}
 		if (req.query.status) {
@@ -43,7 +43,7 @@ router.get("/", requireAuth, async (req, res, next) => {
 	}
 });
 
-router.patch("/:id/approve", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.patch("/:id/approve", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const request = await RentalRequest.findById(req.params.id);
 		if (!request) {
@@ -61,7 +61,7 @@ router.patch("/:id/approve", requireAuth, requireRole(["ADMIN", "MANAGER"]), asy
 	}
 });
 
-router.patch("/:id/reject", requireAuth, requireRole(["ADMIN", "MANAGER"]), async (req, res, next) => {
+router.patch("/:id/reject", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
 	try {
 		const request = await RentalRequest.findById(req.params.id);
 		if (!request) {
