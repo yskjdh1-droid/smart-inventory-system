@@ -16,7 +16,7 @@ const equipmentSchema = new mongoose.Schema(
     quantity: { type: Number, default: 1 },
     status: {
       type: String,
-      enum: ["AVAILABLE", "BORROWED", "REPAIR", "LOST"],
+      enum: ["AVAILABLE", "BORROWED", "REPAIR", "LOST", "UNAVAILABLE"],
       default: "AVAILABLE"
     },
     deletedAt: { type: Date, default: null }

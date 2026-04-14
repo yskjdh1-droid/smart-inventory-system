@@ -1,5 +1,6 @@
 const express = require("express");
 const Equipment = require("../models/Equipment");
+const Loan = require("../models/Loan");
 const Category = require("../models/Category");
 const { QRCodeService } = require("../services/qr-code.service");
 const { upload, buildPublicUrl } = require("../services/file-storage.service");
@@ -129,6 +130,51 @@ router.get("/:id", requireAuth, async (req, res, next) => {
 			throw e;
 		}
 		return ok(res, { equipment }, "Equipment updated");
+	} catch (err) {
+		return next(err);
+	}
+});
+
+router.patch("/:id/availability", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
+	try {
+		const { rentable } = req.body;
+		if (typeof rentable !== "boolean") {
+			const e = new Error("rentable(boolean) is required");
+			e.status = 422;
+			e.code = "VALIDATION_ERROR";
+			throw e;
+		}
+
+		const equipment = await Equipment.findById(req.params.id);
+		if (!equipment) {
+			const e = new Error("Equipment not found");
+			e.status = 404;
+			e.code = "EQUIPMENT_NOT_FOUND";
+			throw e;
+		}
+
+		if (!rentable) {
+			const activeLoan = await Loan.findOne({ equipmentId: equipment._id, status: "ACTIVE" }).select("_id");
+			if (activeLoan) {
+				const e = new Error("Cannot set unavailable while equipment is borrowed");
+				e.status = 409;
+				e.code = "EQUIPMENT_BORROWED";
+				throw e;
+			}
+			equipment.status = "UNAVAILABLE";
+		} else {
+			if (equipment.status === "UNAVAILABLE") {
+				equipment.status = "AVAILABLE";
+			}
+		}
+
+		await equipment.save();
+
+		return ok(
+			res,
+			{ equipment, rentable: equipment.status === "AVAILABLE" },
+			rentable ? "Equipment set as rentable" : "Equipment set as unavailable"
+		);
 	} catch (err) {
 		return next(err);
 	}

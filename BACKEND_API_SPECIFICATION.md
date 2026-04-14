@@ -107,6 +107,7 @@
 │   ├── POST   /:loanId/report-loss
 │   ├── POST   /:loanId/report-damage
 │   ├── GET    /my-loans
+│   ├── GET    /incident-reports
 │   ├── GET    /
 │   ├── GET    /overdue
 │   └── GET    /penalties
@@ -187,6 +188,7 @@ Request -> CORS -> JSON Parser -> Logger -> Auth Check -> Role Check -> Handler 
 ### 4.2 관리자 API (ADMIN)
 - POST /equipment (multipart/form-data, field: `photo` optional)
 - PATCH /equipment/:id (multipart/form-data, field: `photo` optional)
+- PATCH /equipment/:id/availability
 - DELETE /equipment/:id
 - POST /equipment/:id/generate-qr
 - GET /categories
@@ -200,6 +202,7 @@ Request -> CORS -> JSON Parser -> Logger -> Auth Check -> Role Check -> Handler 
 - GET /loans/:loanId/extension-requests
 - PATCH /loans/:loanId/report-loss/:reportId
 - PATCH /loans/:loanId/report-damage/:reportId
+- GET /loans/incident-reports
 - GET /loans
 - GET /loans/overdue
 - GET /loans/penalties
@@ -361,7 +364,7 @@ POST /auth/logout
 
 | 기능 | API |
 |------|-----|
-| 기자재 관리 | POST /equipment, PATCH /equipment/:id, DELETE /equipment/:id |
+| 기자재 관리 | POST /equipment, PATCH /equipment/:id, PATCH /equipment/:id/availability, DELETE /equipment/:id |
 | 카테고리 관리 | GET /categories, POST /categories, PATCH /categories/:categoryId, DELETE /categories/:categoryId |
 | 연장 요청 처리 | GET /loans/:loanId/extension-requests, PATCH /loans/:loanId/extension-requests/:requestId |
 | 강제 반납 | POST /loans/:loanId/force-return |
@@ -369,7 +372,7 @@ POST /auth/logout
 | 알림 설정 | GET /admin/notification-settings, PATCH /admin/notification-settings |
 | 관리자 브로드캐스트 | POST /admin/notifications/broadcast |
 | 만기 알림 수동 실행 | POST /admin/notifications/due-reminders/run |
-| 고장 신고 처리 | PATCH /loans/:loanId/report-damage/:reportId, PATCH /loans/:loanId/report-loss/:reportId |
+| 고장 신고 처리 | PATCH /loans/:loanId/report-damage/:reportId, PATCH /loans/:loanId/report-loss/:reportId, GET /loans/incident-reports |
 | 관리자 대시보드 | GET /dashboard/equipment-stats, GET /dashboard/rental-stats, GET /dashboard/monthly-trends |
 | 파일 전체 조회 | GET /files/all |
 
@@ -512,6 +515,7 @@ POST /loans/scan
 ```json
 {
   "description": "카메라 렌즈 균열 발생",
+  "damagedPart": "렌즈",
   "severity": "MEDIUM",
   "reportedAt": "2026-04-13T09:30:00.000Z"
 }
@@ -534,6 +538,32 @@ POST /loans/scan
 관리자 처리:
 - PATCH /loans/:loanId/report-loss/:reportId
 - PATCH /loans/:loanId/report-damage/:reportId
+- GET /loans/incident-reports
+
+관리자 신고 조회 응답 예시 (200):
+```json
+{
+  "success": true,
+  "data": {
+    "reports": [
+      {
+        "_id": "rep_001",
+        "reportType": "DAMAGE",
+        "description": "카메라 렌즈 균열 발생",
+        "damagedPart": "렌즈",
+        "severity": "MEDIUM",
+        "status": "REPORTED"
+      }
+    ],
+    "pagination": {
+      "total": 1,
+      "page": 1,
+      "limit": 20,
+      "totalPages": 1
+    }
+  }
+}
+```
 
 강제 반납 처리:
 - POST /loans/:loanId/force-return
@@ -613,13 +643,14 @@ Equipment 상세 필드:
 - `photoUrl`: 기자재 사진 URL
 - `photoStoredName`: 저장된 사진 파일명
 - `categoryName`: 목록 필터/정렬용 카테고리 표시명
+- `status`: `AVAILABLE`, `BORROWED`, `REPAIR`, `LOST`, `UNAVAILABLE`
 
 User 상세 필드:
 - `borrowBlockedUntil`: 연체 일수만큼 대여 금지되는 종료 시각
 
 ### 7.4 ExtensionRequest / IncidentReport
 - ExtensionRequest: `loanId`, `requestedDueDate`, `reason`, `status`, `reviewNote`, `reviewedBy`
-- IncidentReport: `loanId`, `reportType(LOSS|DAMAGE)`, `description`, `severity`, `status`, `adminNote`
+- IncidentReport: `loanId`, `reportType(LOSS|DAMAGE)`, `description`, `damagedPart`, `severity`, `status`, `adminNote`
 - LOSS 신고 시: 기자재 상태 `LOST`, 대여 상태 `LOST`
 - DAMAGE 신고 시: 기자재 상태 `REPAIR`
 

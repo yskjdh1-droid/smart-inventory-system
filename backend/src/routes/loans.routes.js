@@ -71,7 +71,7 @@ router.post("/:loanId/return", requireAuth, async (req, res, next) => {
 		await loan.save();
 		const borrowBlock = await LoanScanService.applyLateReturnBorrowBlock({ userId: loan.userId, loan });
 		const equipment = await Equipment.findById(loan.equipmentId);
-		const nextEquipmentStatus = equipment && ["REPAIR", "LOST"].includes(equipment.status) ? equipment.status : "AVAILABLE";
+		const nextEquipmentStatus = equipment && ["REPAIR", "LOST", "UNAVAILABLE"].includes(equipment.status) ? equipment.status : "AVAILABLE";
 		await Equipment.findByIdAndUpdate(loan.equipmentId, { status: nextEquipmentStatus });
 
 		return ok(
@@ -113,7 +113,7 @@ router.post("/:loanId/force-return", requireAuth, requireRole(["ADMIN"]), async 
 		await loan.save();
 		const borrowBlock = await LoanScanService.applyLateReturnBorrowBlock({ userId: loan.userId, loan });
 		const equipment = await Equipment.findById(loan.equipmentId);
-		const nextEquipmentStatus = equipment && ["REPAIR", "LOST"].includes(equipment.status) ? equipment.status : "AVAILABLE";
+		const nextEquipmentStatus = equipment && ["REPAIR", "LOST", "UNAVAILABLE"].includes(equipment.status) ? equipment.status : "AVAILABLE";
 		await Equipment.findByIdAndUpdate(loan.equipmentId, { status: nextEquipmentStatus });
 
 		return ok(
@@ -280,9 +280,9 @@ router.post("/:loanId/report-loss", requireAuth, async (req, res, next) => {
 
 router.post("/:loanId/report-damage", requireAuth, async (req, res, next) => {
 	try {
-		const { description, severity = "MEDIUM" } = req.body;
-		if (!description) {
-			const e = new Error("description is required");
+		const { description, damagedPart, severity = "MEDIUM" } = req.body;
+		if (!description || !damagedPart) {
+			const e = new Error("description and damagedPart are required");
 			e.status = 422;
 			e.code = "VALIDATION_ERROR";
 			throw e;
@@ -316,11 +316,19 @@ router.post("/:loanId/report-damage", requireAuth, async (req, res, next) => {
 					reportedBy: req.user.id,
 					reportType: "DAMAGE",
 					description,
+					damagedPart,
 					severity
 				});
 				await report.save({ session });
 				await applyIncidentEquipmentStatus({ loan, equipment, reportType: "DAMAGE", session });
-				payload = { reportId: report._id, reportType: report.reportType, status: report.status, equipmentStatus: equipment.status, loanStatus: loan.status };
+				payload = {
+					reportId: report._id,
+					reportType: report.reportType,
+					status: report.status,
+					damagedPart: report.damagedPart,
+					equipmentStatus: equipment.status,
+					loanStatus: loan.status
+				};
 			});
 			return ok(res, payload, "Report submitted", 201);
 		} finally {
@@ -363,7 +371,55 @@ router.patch("/:loanId/report-damage/:reportId", requireAuth, requireRole(["ADMI
 		report.adminNote = req.body.adminNote || report.adminNote;
 		report.handledBy = req.user.id;
 		await report.save();
-		return ok(res, { reportId: report._id, status: report.status }, "Incident updated");
+		return ok(
+			res,
+			{ reportId: report._id, status: report.status, damagedPart: report.damagedPart, description: report.description },
+			"Incident updated"
+		);
+	} catch (err) {
+		return next(err);
+	}
+});
+
+router.get("/incident-reports", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
+	try {
+		const { loanId, reportType, status, page = 1, limit = 20 } = req.query;
+		const filter = {};
+
+		if (loanId) {
+			filter.loanId = loanId;
+		}
+		if (reportType) {
+			filter.reportType = reportType;
+		}
+		if (status) {
+			filter.status = status;
+		}
+
+		const p = Number(page);
+		const l = Number(limit);
+
+		const [items, total] = await Promise.all([
+			IncidentReport.find(filter)
+				.populate("reportedBy", "name email role")
+				.populate({
+					path: "loanId",
+					select: "userId equipmentId dueDate status",
+					populate: [
+						{ path: "userId", select: "name email" },
+						{ path: "equipmentId", select: "name serialNumber" }
+					]
+				})
+				.sort({ createdAt: -1 })
+				.skip((p - 1) * l)
+				.limit(l),
+			IncidentReport.countDocuments(filter)
+		]);
+
+		return ok(res, {
+			reports: items,
+			pagination: { total, page: p, limit: l, totalPages: Math.ceil(total / l) || 1 }
+		});
 	} catch (err) {
 		return next(err);
 	}

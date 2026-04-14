@@ -6,6 +6,7 @@ const incidentReportSchema = new mongoose.Schema(
     reportedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     reportType: { type: String, enum: ["LOSS", "DAMAGE"], required: true },
     description: { type: String, required: true },
+    damagedPart: { type: String, default: "" },
     severity: { type: String, enum: ["LOW", "MEDIUM", "HIGH"], default: "MEDIUM" },
     status: { type: String, enum: ["REPORTED", "CONFIRMED", "RESOLVED", "REJECTED"], default: "REPORTED" },
     adminNote: { type: String, default: "" },

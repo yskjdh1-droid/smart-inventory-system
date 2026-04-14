@@ -56,7 +56,9 @@ class LoanScanService {
             session
           });
 
-          const nextEquipmentStatus = ["REPAIR", "LOST"].includes(equipment.status) ? equipment.status : "AVAILABLE";
+          const nextEquipmentStatus = ["REPAIR", "LOST", "UNAVAILABLE"].includes(equipment.status)
+            ? equipment.status
+            : "AVAILABLE";
           equipment.status = nextEquipmentStatus;
           await equipment.save({ session });
 
