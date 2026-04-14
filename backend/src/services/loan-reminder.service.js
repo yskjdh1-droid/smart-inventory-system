@@ -6,7 +6,7 @@ const { FcmService } = require("./fcm.service");
 const { mailer } = require("../config/mailer");
 const env = require("../config/env");
 
-const DEFAULT_DUE_REMINDER_HOURS_BEFORE = 24;
+const DEFAULT_DUE_REMINDER_SCHEDULE = ["D-3", "D-1", "SAME_DAY_09"];
 const SAME_DAY_REMINDER_HOUR = 9;
 const SWEEP_INTERVAL_MS = 60 * 1000;
 
@@ -49,10 +49,10 @@ async function getUserReminderSetting(userId) {
     pushEnabled: setting ? setting.pushEnabled !== false : true,
     emailEnabled: setting ? setting.emailEnabled !== false : true,
     dueReminderEnabled: setting ? setting.dueReminderEnabled !== false : true,
-    dueReminderHoursBefore:
-      setting && Number.isFinite(setting.dueReminderHoursBefore)
-        ? setting.dueReminderHoursBefore
-        : DEFAULT_DUE_REMINDER_HOURS_BEFORE
+    dueReminderSchedule:
+      setting && Array.isArray(setting.dueReminderSchedule) && setting.dueReminderSchedule.length > 0
+        ? setting.dueReminderSchedule
+        : DEFAULT_DUE_REMINDER_SCHEDULE
   };
 }
 
@@ -90,7 +90,12 @@ async function sendEmail(to, title, body) {
 
 async function deliverReminder({ user, equipment, loan, reminderKind }) {
   const dueDateText = formatReminderDate(loan.dueDate);
-  const title = reminderKind === "SAME_DAY" ? "반납 당일 알림" : "반납 하루 전 알림";
+  const titles = {
+    THREE_DAYS_BEFORE: "반납 3일 전 알림",
+    ONE_DAY_BEFORE: "반납 1일 전 알림",
+    SAME_DAY: "반납 당일 오전 9시 알림"
+  };
+  const title = titles[reminderKind] || "반납 예정 알림";
   const body = `${user.name}님, ${equipment.name}의 반납 예정일은 ${dueDateText}입니다.`;
   const data = {
     type: "LOAN_DUE_REMINDER",
@@ -126,31 +131,40 @@ async function processLoanReminder(loan, now) {
     return false;
   }
 
-  const beforeReminderDate = buildBeforeReminderDate(dueDate, user.reminderSetting.dueReminderHoursBefore);
-  const morningReminderDate = buildMorningReminderDate(dueDate);
-
-  if (
-    !loan.dueReminder24hSentAt &&
-    dateKey(now) === dateKey(beforeReminderDate) &&
-    now >= beforeReminderDate &&
-    now < dueDate
-  ) {
-    const delivered = await deliverReminder({ user, equipment, loan, reminderKind: "ONE_DAY_BEFORE" });
-    if (delivered) {
-      await Loan.findByIdAndUpdate(loan._id, { dueReminder24hSentAt: new Date() });
+  const reminderPlans = [
+    {
+      reminderKind: "THREE_DAYS_BEFORE",
+      reminderDate: buildBeforeReminderDate(dueDate, 72),
+      sentAtField: "dueReminder3dSentAt"
+    },
+    {
+      reminderKind: "ONE_DAY_BEFORE",
+      reminderDate: buildBeforeReminderDate(dueDate, 24),
+      sentAtField: "dueReminder24hSentAt"
+    },
+    {
+      reminderKind: "SAME_DAY",
+      reminderDate: buildMorningReminderDate(dueDate),
+      sentAtField: "dueReminderMorningSentAt"
     }
-    return delivered;
-  }
+  ];
 
-  if (
-    !loan.dueReminderMorningSentAt &&
-    dateKey(now) === dateKey(dueDate) &&
-    now >= morningReminderDate &&
-    now < dueDate
-  ) {
-    const delivered = await deliverReminder({ user, equipment, loan, reminderKind: "SAME_DAY" });
+  for (const plan of reminderPlans) {
+    if (loan[plan.sentAtField]) {
+      continue;
+    }
+
+    if (dateKey(now) !== dateKey(plan.reminderDate)) {
+      continue;
+    }
+
+    if (now < plan.reminderDate || now >= dueDate) {
+      continue;
+    }
+
+    const delivered = await deliverReminder({ user, equipment, loan, reminderKind: plan.reminderKind });
     if (delivered) {
-      await Loan.findByIdAndUpdate(loan._id, { dueReminderMorningSentAt: new Date() });
+      await Loan.findByIdAndUpdate(loan._id, { [plan.sentAtField]: new Date() });
     }
     return delivered;
   }
@@ -171,14 +185,14 @@ async function runDueReminderSweep() {
     windowStart.setHours(0, 0, 0, 0);
 
     const windowEnd = new Date(now);
-    windowEnd.setDate(windowEnd.getDate() + 1);
+    windowEnd.setDate(windowEnd.getDate() + 3);
     windowEnd.setHours(23, 59, 59, 999);
 
     const loans = await Loan.find({
       status: "ACTIVE",
       dueDate: { $gte: windowStart, $lte: windowEnd }
     })
-      .select("userId equipmentId dueDate status dueReminder24hSentAt dueReminderMorningSentAt")
+      .select("userId equipmentId dueDate status dueReminder3dSentAt dueReminder24hSentAt dueReminderMorningSentAt")
       .sort({ dueDate: 1 });
 
     let sent = 0;

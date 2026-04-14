@@ -7,6 +7,7 @@ const loanSchema = new mongoose.Schema(
     borrowedAt: { type: Date, default: Date.now },
     dueDate: { type: Date, required: true },
     returnedAt: { type: Date, default: null },
+    dueReminder3dSentAt: { type: Date, default: null },
     dueReminder24hSentAt: { type: Date, default: null },
     dueReminderMorningSentAt: { type: Date, default: null },
     status: {

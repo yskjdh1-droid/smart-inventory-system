@@ -213,6 +213,7 @@ router.patch("/:loanId/extension-requests/:requestId", requireAuth, requireRole(
 			const loan = await Loan.findById(request.loanId);
 			if (loan) {
 				loan.dueDate = request.requestedDueDate;
+				loan.dueReminder3dSentAt = null;
 				loan.dueReminder24hSentAt = null;
 				loan.dueReminderMorningSentAt = null;
 				await loan.save();

@@ -213,6 +213,7 @@ Request -> CORS -> JSON Parser -> Logger -> Auth Check -> Role Check -> Handler 
 - PATCH /admin/notification-settings
 - PATCH /admin/penalties/:penaltyId
 - POST /admin/notifications/broadcast
+- POST /admin/notifications/due-reminders/run
 - GET /files/all
 - GET /users
 - GET /users/:id
@@ -367,6 +368,7 @@ POST /auth/logout
 | 연체/페널티 관리 | GET /loans/overdue, GET /loans/penalties, PATCH /admin/penalties/:penaltyId |
 | 알림 설정 | GET /admin/notification-settings, PATCH /admin/notification-settings |
 | 관리자 브로드캐스트 | POST /admin/notifications/broadcast |
+| 만기 알림 수동 실행 | POST /admin/notifications/due-reminders/run |
 | 고장 신고 처리 | PATCH /loans/:loanId/report-damage/:reportId, PATCH /loans/:loanId/report-loss/:reportId |
 | 관리자 대시보드 | GET /dashboard/equipment-stats, GET /dashboard/rental-stats, GET /dashboard/monthly-trends |
 | 파일 전체 조회 | GET /files/all |
@@ -648,7 +650,8 @@ User 상세 필드:
 - 동일 loanId 기준 1차/2차 알림을 각각 1회만 발송
 
 ### 8.3.1 발송 추적
-- `Loan.dueReminder24hSentAt`으로 24시간 전 알림 발송 여부를 추적한다.
+- `Loan.dueReminder3dSentAt`으로 3일 전 알림 발송 여부를 추적한다.
+- `Loan.dueReminder24hSentAt`으로 1일 전 알림 발송 여부를 추적한다.
 - `Loan.dueReminderMorningSentAt`으로 당일 오전 9시 알림 발송 여부를 추적한다.
 
 ### 8.4 알림 수신 설정 API
@@ -664,14 +667,14 @@ User 상세 필드:
     "pushEnabled": true,
     "emailEnabled": true,
     "dueReminderEnabled": true,
-    "dueReminderHoursBefore": 24
+    "dueReminderSchedule": ["D-3", "D-1", "SAME_DAY_09"]
   }
 }
 ```
 
 알림 발송 규칙:
-- `dueReminderHoursBefore`는 1차 알림 기준 시간(기본 24시간)을 나타낸다.
-- 2차 알림은 반납 당일 오전 9시에 추가로 발송된다.
+- 대여 만기 3일 전, 1일 전, 당일 오전 9시에 순서대로 알림을 발송한다.
+- `dueReminderSchedule`은 기본 고정 스케줄이며, 현재는 `D-3`, `D-1`, `SAME_DAY_09`를 사용한다.
 
 ### 8.5 FCM 디바이스 토큰 API
 - GET /users/push-tokens
@@ -689,6 +692,20 @@ User 상세 필드:
 ### 8.6 푸시 발송 테스트 API
 - 사용자 셀프 테스트: POST /users/push-test
 - 관리자 브로드캐스트: POST /admin/notifications/broadcast
+- 관리자 만기 알림 수동 실행: POST /admin/notifications/due-reminders/run
+
+만기 알림 수동 실행 응답 예시 (200):
+```json
+{
+  "success": true,
+  "message": "Due reminder sweep executed",
+  "data": {
+    "skipped": false,
+    "scanned": 12,
+    "sent": 3
+  }
+}
+```
 
 ### 8.7 파일 스토리지 API
 - 업로드: POST /files/upload (multipart/form-data, field: `file`)
@@ -723,8 +740,7 @@ User 상세 필드:
 {
   "pushEnabled": true,
   "emailEnabled": false,
-  "dueReminderEnabled": true,
-  "dueReminderHoursBefore": 24
+  "dueReminderEnabled": true
 }
 ```
 
@@ -737,7 +753,7 @@ User 상세 필드:
     "pushEnabled": true,
     "emailEnabled": false,
     "dueReminderEnabled": true,
-    "dueReminderHoursBefore": 24
+    "dueReminderSchedule": ["D-3", "D-1", "SAME_DAY_09"]
   }
 }
 ```

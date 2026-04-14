@@ -2,6 +2,7 @@ const express = require("express");
 const NotificationSetting = require("../models/NotificationSetting");
 const Penalty = require("../models/Penalty");
 const { FcmService } = require("../services/fcm.service");
+const { runDueReminderSweep } = require("../services/loan-reminder.service");
 const { ok } = require("../utils/response");
 const { requireAuth, requireRole } = require("../middlewares/auth");
 
@@ -82,6 +83,15 @@ router.post("/notifications/broadcast", requireAuth, requireRole(["ADMIN"]), asy
 		});
 
 		return ok(res, result, "Broadcast processed");
+	} catch (err) {
+		return next(err);
+	}
+});
+
+router.post("/notifications/due-reminders/run", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
+	try {
+		const result = await runDueReminderSweep();
+		return ok(res, result, "Due reminder sweep executed");
 	} catch (err) {
 		return next(err);
 	}

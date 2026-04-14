@@ -7,6 +7,8 @@ const { FcmService } = require("../services/fcm.service");
 const { ok } = require("../utils/response");
 const { requireAuth, requireRole } = require("../middlewares/auth");
 
+const DEFAULT_DUE_REMINDER_SCHEDULE = ["D-3", "D-1", "SAME_DAY_09"];
+
 const router = express.Router();
 
 router.get("/", requireAuth, requireRole(["ADMIN"]), async (req, res, next) => {
@@ -28,7 +30,7 @@ router.get("/notification-settings", requireAuth, async (req, res, next) => {
 			pushEnabled: setting.pushEnabled,
 			emailEnabled: setting.emailEnabled,
 			dueReminderEnabled: setting.dueReminderEnabled,
-			dueReminderHoursBefore: setting.dueReminderHoursBefore
+			dueReminderSchedule: setting.dueReminderSchedule?.length ? setting.dueReminderSchedule : DEFAULT_DUE_REMINDER_SCHEDULE
 		});
 	} catch (err) {
 		return next(err);
@@ -42,8 +44,7 @@ router.patch("/notification-settings", requireAuth, async (req, res, next) => {
 			{
 				pushEnabled: req.body.pushEnabled,
 				emailEnabled: req.body.emailEnabled,
-				dueReminderEnabled: req.body.dueReminderEnabled,
-				dueReminderHoursBefore: req.body.dueReminderHoursBefore
+				dueReminderEnabled: req.body.dueReminderEnabled
 			},
 			{ upsert: true, new: true, setDefaultsOnInsert: true }
 		);
@@ -54,7 +55,7 @@ router.patch("/notification-settings", requireAuth, async (req, res, next) => {
 				pushEnabled: setting.pushEnabled,
 				emailEnabled: setting.emailEnabled,
 				dueReminderEnabled: setting.dueReminderEnabled,
-				dueReminderHoursBefore: setting.dueReminderHoursBefore
+				dueReminderSchedule: setting.dueReminderSchedule?.length ? setting.dueReminderSchedule : DEFAULT_DUE_REMINDER_SCHEDULE
 			},
 			"Notification settings updated"
 		);

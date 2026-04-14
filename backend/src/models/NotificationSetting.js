@@ -7,6 +7,7 @@ const notificationSettingSchema = new mongoose.Schema(
     pushEnabled: { type: Boolean, default: true },
     emailEnabled: { type: Boolean, default: true },
     dueReminderEnabled: { type: Boolean, default: true },
+    dueReminderSchedule: { type: [String], default: ["D-3", "D-1", "SAME_DAY_09"] },
     dueReminderHoursBefore: { type: Number, default: 24 },
     overdueAlertEnabled: { type: Boolean, default: true },
     incidentAlertEnabled: { type: Boolean, default: true },
