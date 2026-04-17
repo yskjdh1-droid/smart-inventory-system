@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "기자재 대여 관리",
+    "slug": "equipment-rental",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "QR 스캔 및 반납 사진 촬영을 위해 카메라 접근이 필요합니다.",
+        "NSPhotoLibraryUsageDescription": "사진 첨부를 위해 갤러리 접근이 필요합니다."
+      }
+    },
+    "android": {
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      ["expo-camera", { "cameraPermission": "QR 스캔을 위해 카메라 접근이 필요합니다." }]
+    ]
+  }
+}
